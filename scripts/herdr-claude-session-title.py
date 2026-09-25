@@ -4,15 +4,32 @@
 Modes:
   (no args)                             hook mode: Claude Code hook input JSON on stdin
   extract <transcript_path> <sid>       print extracted title (test entrypoint)
+  prompt                                print fallback title for the prompt on stdin (test entrypoint)
 """
 import json
 import os
+import re
 import subprocess
 import sys
 
 SOURCE = "agent:title"
 MAX_TITLE_CHARS = 120
 MAX_PROMPT_CHARS = 60
+
+# Synthetic messages Claude Code delivers as user prompts. They are not real
+# user input and must never become the pane title.
+SKIP_PROMPT_PREFIXES = (
+    "<task-notification>",
+    "<system-reminder>",
+    "<cross-session-message",
+    "<local-command-stdout>",
+    "<local-command-stderr>",
+)
+
+# A pasted block *is* real user content; only its wrapper tag is synthetic.
+PASTED_CONTENT_RE = re.compile(
+    r"<pasted_content[^>]*>(.*?)</pasted_content>", re.DOTALL
+)
 
 
 def sanitize(title):
@@ -72,6 +89,28 @@ def summary_from_index(transcript_path, session_id):
         if isinstance(entry, dict) and entry.get("sessionId") == session_id:
             return sanitize(entry.get("summary"))
     return None
+
+
+def title_from_prompt(prompt):
+    """Derive a fallback title from a UserPromptSubmit prompt, or None."""
+    if not isinstance(prompt, str):
+        return None
+    text = prompt.strip()
+    if not text:
+        return None
+    # Drop synthetic wrappers: task notifications, system reminders and
+    # cross-session messages are not user input.
+    if text.startswith(SKIP_PROMPT_PREFIXES):
+        return None
+    # Keep the content of pasted blocks but strip the wrapper tag.
+    text = PASTED_CONTENT_RE.sub(lambda m: " {} ".format(m.group(1)), text)
+    text = " ".join(text.split())
+    if not text or text.startswith(SKIP_PROMPT_PREFIXES):
+        return None
+    cleaned = sanitize(text)
+    if not cleaned:
+        return None
+    return cleaned[:MAX_PROMPT_CHARS]
 
 
 def extract_title(transcript_path, session_id):
@@ -134,11 +173,7 @@ def hook_mode():
         return
     title = extract_title(transcript_path, session_id)
     if not title and hook_input.get("hook_event_name") == "UserPromptSubmit":
-        prompt = hook_input.get("prompt")
-        if isinstance(prompt, str):
-            cleaned = sanitize(prompt)
-            if cleaned:
-                title = cleaned[:MAX_PROMPT_CHARS]
+        title = title_from_prompt(hook_input.get("prompt"))
     if not title:
         return
     report(pane_id, title)
@@ -148,6 +183,13 @@ def main():
     args = sys.argv[1:]
     if args[:1] == ["extract"] and len(args) == 3:
         title = extract_title(args[1], args[2])
+        if not title:
+            return 1
+        print(title)
+        return 0
+    if args[:1] == ["prompt"]:
+        # prompt text comes on stdin (may be multi-line)
+        title = title_from_prompt(sys.stdin.read())
         if not title:
             return 1
         print(title)
