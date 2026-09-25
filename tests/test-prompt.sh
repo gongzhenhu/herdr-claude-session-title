@@ -28,12 +28,21 @@ title=$(printf 'help me fix the login bug in auth.py' | python3 "$py" prompt)
 long_title=$(printf 'x%.0s' $(seq 1 80) | python3 "$py" prompt)
 [ "${#long_title}" -eq 60 ] || fail "expected 60-char truncation, got length: ${#long_title}"
 
-# pasted content keeps the user's text but drops the wrapper tag
-title=$(printf '<pasted_content id="e5c9">\nfix the pane title bug please\n</pasted_content>' | python3 "$py" prompt)
+# pasted content keeps the user's text but drops the wrapper tag.
+# Claude Code closes the wrapper as </pasted_content id="xxxx"> (id repeated),
+# which is what real prompts look like; also accept a plain closing tag.
+title=$(printf '<pasted_content id="e5c9">\nfix the pane title bug please\n</pasted_content id="e5c9">' | python3 "$py" prompt)
 [ "$title" = "fix the pane title bug please" ] || fail "got: $title"
 
+title=$(printf '<pasted_content id="x">inner text</pasted_content>' | python3 "$py" prompt)
+[ "$title" = "inner text" ] || fail "got: $title"
+
+# leading blank lines like the real hook payload must not break unwrapping
+title=$(printf '\n\n<pasted_content id="1d54">\n6f70fedb061f4f388de1d1e63c140959\n</pasted_content id="1d54">' | python3 "$py" prompt)
+[ "$title" = "6f70fedb061f4f388de1d1e63c140959" ] || fail "got: $title"
+
 # text around a pasted block is preserved
-title=$(printf 'look at this: <pasted_content id="x">inner text</pasted_content> thanks' | python3 "$py" prompt)
+title=$(printf 'look at this: <pasted_content id="x">inner text</pasted_content id="x"> thanks' | python3 "$py" prompt)
 [ "$title" = "look at this: inner text thanks" ] || fail "got: $title"
 
 echo "test-prompt: OK"

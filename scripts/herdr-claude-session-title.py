@@ -27,8 +27,10 @@ SKIP_PROMPT_PREFIXES = (
 )
 
 # A pasted block *is* real user content; only its wrapper tag is synthetic.
+# Note: Claude Code closes the wrapper as </pasted_content id="xxxx"> (the id
+# is repeated on the closing tag), not plain </pasted_content>.
 PASTED_CONTENT_RE = re.compile(
-    r"<pasted_content[^>]*>(.*?)</pasted_content>", re.DOTALL
+    r"<pasted_content[^>]*>(.*?)</pasted_content[^>]*>", re.DOTALL
 )
 
 
