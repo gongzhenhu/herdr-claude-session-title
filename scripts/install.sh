@@ -23,7 +23,7 @@ import tempfile
 settings_path = os.environ["SETTINGS_PATH"]
 hook_command = os.environ["HOOK_COMMAND"]
 marker = "herdr-claude-session-title.sh"
-events = ["SessionStart", "UserPromptSubmit", "Stop"]
+events = ["SessionStart", "UserPromptSubmit", "Stop", "SessionEnd"]
 
 settings = {}
 if os.path.exists(settings_path):

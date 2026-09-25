@@ -7,13 +7,12 @@ Modes:
 """
 import json
 import os
-import random
-import socket
+import subprocess
 import sys
-import time
 
-SOURCE = "plugin:claude-session-title"
+SOURCE = "agent:title"
 MAX_TITLE_CHARS = 120
+MAX_PROMPT_CHARS = 60
 
 
 def sanitize(title):
@@ -84,29 +83,30 @@ def extract_title(transcript_path, session_id):
     return summary_from_index(transcript_path, session_id)
 
 
-def report(pane_id, socket_path, title):
-    request = {
-        "id": "{}:{}:{:06d}".format(SOURCE, int(time.time() * 1000), random.randrange(1_000_000)),
-        "method": "pane.report_metadata",
-        "params": {
-            "pane_id": pane_id,
-            "source": SOURCE,
-            "agent": "claude",
-            "title": title,
-            "seq": time.time_ns(),
-        },
-    }
-    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    client.settimeout(0.5)
+def report(pane_id, title):
+    _report_metadata(pane_id, ["--token", "title={}".format(title)])
+
+
+def clear_reported_title(pane_id):
+    _report_metadata(pane_id, ["--clear-token", "title"])
+
+
+def _report_metadata(pane_id, extra):
+    herdr_bin = os.environ.get("HERDR_BIN_PATH") or "herdr"
+    cmd = [
+        herdr_bin, "pane", "report-metadata", pane_id,
+        "--source", SOURCE,
+        "--agent", "claude",
+    ] + extra
     try:
-        client.connect(socket_path)
-        client.sendall((json.dumps(request) + "\n").encode())
-        try:
-            client.recv(4096)
-        except OSError:
-            pass
-    finally:
-        client.close()
+        subprocess.run(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=2,
+        )
+    except Exception:
+        pass
 
 
 def hook_mode():
@@ -123,14 +123,25 @@ def hook_mode():
     if hook_input.get("agent_id"):
         # subagent event: its transcript does not represent the main session
         return
+    if hook_input.get("hook_event_name") == "SessionEnd":
+        # session over (Ctrl+C exit = reason prompt_input_exit): drop the
+        # pane title so the next session in this pane does not inherit it
+        clear_reported_title(pane_id)
+        return
     session_id = hook_input.get("session_id")
     transcript_path = hook_input.get("transcript_path")
     if not isinstance(session_id, str) or not isinstance(transcript_path, str):
         return
     title = extract_title(transcript_path, session_id)
+    if not title and hook_input.get("hook_event_name") == "UserPromptSubmit":
+        prompt = hook_input.get("prompt")
+        if isinstance(prompt, str):
+            cleaned = sanitize(prompt)
+            if cleaned:
+                title = cleaned[:MAX_PROMPT_CHARS]
     if not title:
         return
-    report(pane_id, socket_path, title)
+    report(pane_id, title)
 
 
 def main():
