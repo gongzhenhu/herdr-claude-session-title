@@ -1,5 +1,5 @@
 #!/bin/sh
-# installed by the bcihanc.claude-session-title herdr plugin
+# installed by the gongzhenhu.claude-session-title herdr plugin
 # reinstalling the plugin overwrites this file; do not edit in place.
 set -eu
 
