@@ -26,8 +26,8 @@ without output and never blocks Claude Code (0.5s socket timeout).
 
 ## Install
 
-    herdr plugin install bcihanc/herdr-claude-session-title
-    herdr plugin action invoke bcihanc.claude-session-title.install
+    herdr plugin install gongzhenhu/herdr-claude-session-title
+    herdr plugin action invoke gongzhenhu.claude-session-title.install
 
 Restart any Claude Code session that was already running; hooks are read
 at session start.
@@ -40,16 +40,16 @@ at session start.
 
 Check installation state any time:
 
-    herdr plugin action invoke bcihanc.claude-session-title.status
+    herdr plugin action invoke gongzhenhu.claude-session-title.status
 
 ## Uninstall
 
-    herdr plugin action invoke bcihanc.claude-session-title.uninstall
-    herdr plugin uninstall bcihanc.claude-session-title
+    herdr plugin action invoke gongzhenhu.claude-session-title.uninstall
+    herdr plugin uninstall gongzhenhu.claude-session-title
 
 ## Development
 
     sh tests/run.sh        # offline tests, no herdr/Claude needed
     herdr plugin link .    # register the working tree with herdr
 
-Troubleshooting: `herdr plugin log list --plugin bcihanc.claude-session-title`
+Troubleshooting: `herdr plugin log list --plugin gongzhenhu.claude-session-title`

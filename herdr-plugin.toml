@@ -1,4 +1,4 @@
-id = "bcihanc.claude-session-title"
+id = "gongzhenhu.claude-session-title"
 name = "Claude Session Title"
 version = "0.1.0"
 min_herdr_version = "0.7.0"
