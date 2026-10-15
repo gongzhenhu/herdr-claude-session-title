@@ -173,6 +173,17 @@ def hook_mode():
     transcript_path = hook_input.get("transcript_path")
     if not isinstance(session_id, str) or not isinstance(transcript_path, str):
         return
+    if hook_input.get("hook_event_name") == "SessionStart":
+        title = extract_title(transcript_path, session_id)
+        if title:
+            report(pane_id, title)
+        else:
+            # Nothing derivable yet (fresh session). Clear instead of leaving
+            # the previous session's title up: /clear starts a new session
+            # without firing SessionEnd, so a stale title would otherwise
+            # linger until the next message overwrites it.
+            clear_reported_title(pane_id)
+        return
     title = extract_title(transcript_path, session_id)
     if not title and hook_input.get("hook_event_name") == "UserPromptSubmit":
         title = title_from_prompt(hook_input.get("prompt"))

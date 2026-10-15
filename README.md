@@ -15,6 +15,12 @@ herdr server over the herdr socket as pane metadata
 (`pane.report_metadata`). The pane label is not
 touched; the title shows up in herdr's navigator/detail view.
 
+On `SessionStart`, a session that has no title yet (a fresh start, or the
+new file `claude -c` / `/clear` open) clears the pane title instead of
+leaving the previous session's title up — `/clear` starts a new session
+without firing SessionEnd, so a stale title would otherwise linger until
+the next message overwrites it.
+
 The hook is silent by design: outside herdr, or on any error, it exits 0
 without output and never blocks Claude Code (0.5s socket timeout).
 
