@@ -51,6 +51,13 @@ def title_from_transcript(transcript_path):
     # /rename writes {"type":"custom-title","customTitle":...}; Claude Code's
     # auto-naming writes {"type":"ai-title","aiTitle":...}. A user-chosen name
     # always beats the auto name, regardless of which record appears later.
+    custom_title, _ai_title = transcript_titles(transcript_path)
+    return custom_title or _ai_title
+
+
+def transcript_titles(transcript_path):
+    # Returns (custom_title, ai_title): the latest of each kind found.
+    # custom_title is the user's /rename; ai_title is Claude Code's guess.
     custom_title = None
     ai_title = None
     try:
@@ -73,8 +80,8 @@ def title_from_transcript(transcript_path):
                     if candidate:
                         ai_title = candidate
     except OSError:
-        return None
-    return custom_title or ai_title
+        return None, None
+    return custom_title, ai_title
 
 
 def summary_from_index(transcript_path, session_id):
@@ -116,20 +123,52 @@ def title_from_prompt(prompt):
 
 
 def extract_title(transcript_path, session_id):
-    title = title_from_transcript(transcript_path)
-    if title:
-        return title
+    title, _named = extract_title_named(transcript_path, session_id)
+    return title
+
+
+def extract_title_named(transcript_path, session_id):
+    # Returns (title, user_named). user_named is True only for /rename.
+    custom_title, ai_title = transcript_titles(transcript_path)
+    if custom_title:
+        return custom_title, True
+    if ai_title:
+        return ai_title, False
     # last resort: legacy index (current Claude Code no longer maintains it,
     # but old sessions may still have a summary there)
-    return summary_from_index(transcript_path, session_id)
+    return summary_from_index(transcript_path, session_id), False
 
 
-def report(pane_id, title):
-    _report_metadata(pane_id, ["--token", "title={}".format(title)])
+def report(pane_id, title, clear_pin=False):
+    extra = ["--token", "title={}".format(title)]
+    if clear_pin:
+        # A /rename outranks a pinned skill title; the pin is consumed.
+        extra += ["--clear-token", "title-pin"]
+    _report_metadata(pane_id, extra)
 
 
 def clear_reported_title(pane_id):
-    _report_metadata(pane_id, ["--clear-token", "title"])
+    _report_metadata(pane_id, ["--clear-token", "title", "--clear-token", "title-pin"])
+
+
+def title_pinned(pane_id):
+    """True when the pane title was pinned by the pane-titles skill.
+
+    A pinned title survives auto sources (ai-title, prompt fallback): the
+    skill only writes one after reading the whole conversation, which beats
+    guessing from the latest prompt. Fail-open: if herdr cannot be queried,
+    behave as unpinned so reporting keeps working during a herdr hiccup.
+    """
+    herdr_bin = os.environ.get("HERDR_BIN_PATH") or "herdr"
+    try:
+        out = subprocess.run(
+            [herdr_bin, "pane", "get", pane_id],
+            capture_output=True, text=True, timeout=0.5,
+        )
+        pane = json.loads(out.stdout).get("result", {}).get("pane", {})
+        return "title-pin" in (pane.get("tokens") or {})
+    except Exception:
+        return False
 
 
 def _report_metadata(pane_id, extra):
@@ -166,30 +205,38 @@ def hook_mode():
         return
     if hook_input.get("hook_event_name") == "SessionEnd":
         # session over (Ctrl+C exit = reason prompt_input_exit): drop the
-        # pane title so the next session in this pane does not inherit it
-        clear_reported_title(pane_id)
+        # pane title so the next session in this pane does not inherit it.
+        # A pinned (skill-set) title stays: it names the conversation that
+        # ran here, and a brand-new session's SessionStart clears it below.
+        if not title_pinned(pane_id):
+            clear_reported_title(pane_id)
         return
     session_id = hook_input.get("session_id")
     transcript_path = hook_input.get("transcript_path")
     if not isinstance(session_id, str) or not isinstance(transcript_path, str):
         return
     if hook_input.get("hook_event_name") == "SessionStart":
-        title = extract_title(transcript_path, session_id)
-        if title:
-            report(pane_id, title)
-        else:
+        title, user_named = extract_title_named(transcript_path, session_id)
+        if not title:
             # Nothing derivable yet (fresh session). Clear instead of leaving
             # the previous session's title up: /clear starts a new session
             # without firing SessionEnd, so a stale title would otherwise
             # linger until the next message overwrites it.
             clear_reported_title(pane_id)
+        elif user_named:
+            report(pane_id, title, clear_pin=True)
+        elif not title_pinned(pane_id):
+            report(pane_id, title)
         return
-    title = extract_title(transcript_path, session_id)
+    title, user_named = extract_title_named(transcript_path, session_id)
     if not title and hook_input.get("hook_event_name") == "UserPromptSubmit":
         title = title_from_prompt(hook_input.get("prompt"))
     if not title:
         return
-    report(pane_id, title)
+    if user_named:
+        report(pane_id, title, clear_pin=True)
+    elif not title_pinned(pane_id):
+        report(pane_id, title)
 
 
 def main():
